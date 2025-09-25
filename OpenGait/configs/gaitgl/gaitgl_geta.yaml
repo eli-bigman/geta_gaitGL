@@ -1,0 +1,88 @@
+# filepath: d:\xcode\geta_gaitGL\OpenGait\configs\gaitgl\gaitgl_geta.yaml
+data_cfg:
+  dataset_name: CASIA-B
+  dataset_root: your_path
+  dataset_partition: ./datasets/CASIA-B/CASIA-B.json
+  num_workers: 1
+  remove_no_gallery: false
+  test_dataset_name: CASIA-B
+
+evaluator_cfg:
+  enable_float16: false 
+  restore_ckpt_strict: true
+  restore_hint: 80000
+  save_name: GaitGL_GETA
+  sampler:
+    batch_size: 4
+    sample_type: all_ordered
+    type: InferenceSampler
+
+loss_cfg:
+  - loss_term_weight: 1.0
+    margin: 0.2
+    type: TripletLoss
+    log_prefix: triplet
+  - loss_term_weight: 1.0
+    scale: 1
+    type: CrossEntropyLoss
+    log_accuracy: true
+    label_smooth: false
+    log_prefix: softmax
+
+model_cfg:
+  model: GaitGLGeta
+  channels: [32, 64, 128]
+  class_num: 74
+  quantize: true  # Whether to use quantization
+  activation_quantize: true  # Whether to quantize activations along with weights
+
+# GETA optimizer configuration
+geta_optimizer_cfg:
+  variant: adam  # Optimizer type: sgd, adam, or adamw
+  lr: 1.0e-4
+  lr_quant: 1.0e-3  # Learning rate for quantization parameters
+  first_momentum: 0.9
+  weight_decay: 5.0e-4
+  target_group_sparsity: 0.5  # Higher sparsity leads to more compression but potentially lower accuracy
+  start_pruning_step: 10000  # When to start pruning
+  pruning_steps: 20000  # How many steps to reach target sparsity
+  pruning_periods: 10  # Number of periods for incremental pruning
+
+# HESSO optimizer configuration - alternative to GETA
+hesso_optimizer_cfg:
+  variant: adam  # Optimizer type: sgd, adam, or adamw
+  lr: 1.0e-4
+  weight_decay: 5.0e-4
+  target_group_sparsity: 0.5
+  start_pruning_step: 10000
+  pruning_steps: 20000
+  pruning_periods: 10
+
+# Which optimizer to use: 'geta' or 'hesso'
+compression_optimizer: geta
+
+scheduler_cfg:
+  gamma: 0.1
+  milestones:
+    - 70000
+  scheduler: MultiStepLR
+
+trainer_cfg:
+  enable_float16: true
+  with_test: true
+  log_iter: 100
+  restore_ckpt_strict: true
+  restore_hint: 0
+  save_iter: 10000
+  save_name: GaitGL_GETA
+  sync_BN: true
+  total_iter: 80000
+  compression_dir: ./output/compressed_models
+  sampler:
+    batch_size:
+      - 8
+      - 8
+    frames_num_fixed: 30
+    frames_skip_num: 0
+    sample_type: fixed_ordered
+    type: TripletSampler
