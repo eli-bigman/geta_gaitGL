@@ -1,7 +1,6 @@
-# filepath: d:\xcode\geta_gaitGL\OpenGait\configs\gaitgl\gaitgl_geta.yaml
 data_cfg:
   dataset_name: CASIA-B
-  dataset_root: your_path
+  dataset_root: /kaggle/working/CASIA-B-pkl
   dataset_partition: ./datasets/CASIA-B/CASIA-B.json
   num_workers: 1
   remove_no_gallery: false
