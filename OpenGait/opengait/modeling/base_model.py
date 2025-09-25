@@ -400,8 +400,11 @@ class BaseModel(MetaModel, nn.Module):
         return info_dict
 
     @ staticmethod
-    def run_train(model):
+    def run_train(model, optimizer=None):
         """Accept the instance object(model) here, and then run the train loop."""
+        # Use provided optimizer if available, otherwise use model's optimizer
+        opt = optimizer if optimizer is not None else model.optimizer
+        
         for inputs in model.train_loader:
             ipts = model.inputs_pretreament(inputs)
             with autocast(enabled=model.engine_cfg['enable_float16']):
@@ -409,12 +412,30 @@ class BaseModel(MetaModel, nn.Module):
                 training_feat, visual_summary = retval['training_feat'], retval['visual_summary']
                 del retval
             loss_sum, loss_info = model.loss_aggregator(training_feat)
-            ok = model.train_step(loss_sum)
-            if not ok:
-                continue
+            
+            # Zero gradients using the optimizer
+            opt.zero_grad()
+            
+            # Backward and optimization step
+            if model.engine_cfg['enable_float16']:
+                model.Scaler.scale(loss_sum).backward()
+                model.Scaler.step(opt)
+                scale = model.Scaler.get_scale()
+                model.Scaler.update()
+                # Warning caused by optimizer skip when NaN
+                if scale != model.Scaler.get_scale():
+                    model.msg_mgr.log_debug("Training step skip. Expected the former scale equals to the present, got {} and {}".format(
+                        scale, model.Scaler.get_scale()))
+                    continue
+            else:
+                loss_sum.backward()
+                opt.step()
+            
+            model.iteration += 1
+            model.scheduler.step()
 
             visual_summary.update(loss_info)
-            visual_summary['scalar/learning_rate'] = model.optimizer.param_groups[0]['lr']
+            visual_summary['scalar/learning_rate'] = opt.param_groups[0]['lr']
 
             model.msg_mgr.train_step(loss_info, visual_summary)
             if model.iteration % model.engine_cfg['save_iter'] == 0:

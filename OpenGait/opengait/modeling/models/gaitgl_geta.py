@@ -1,3 +1,8 @@
+"""The implementation of GaitGL with GETA compression.
+   
+This module is modified from the original GaitGL model to support GETA compression technique.
+"""
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
