@@ -13,7 +13,7 @@ evaluator_cfg:
   save_name: GaitGL_GETA
   eval_func: identification
   sampler:
-    batch_size: 4
+    batch_size: 2
     sample_type: all_ordered
     type: InferenceSampler
 
