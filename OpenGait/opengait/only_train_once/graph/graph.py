@@ -738,7 +738,7 @@ class Graph:
                     trace_graph, torch.onnx.OperatorExportTypes.ONNX
                 )
             elif Version(torch.__version__) >= Version("1.13.0"):
-                trace_graph = torch.onnx._optimize_graph(
+                trace_graph = torch.onnx.utils._optimize_graph(
                     trace_graph, torch.onnx.OperatorExportTypes.ONNX
                 )
             else:
