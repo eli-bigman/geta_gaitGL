@@ -11,7 +11,6 @@ evaluator_cfg:
   restore_ckpt_strict: true
   restore_hint: 0
   save_name: GaitGL_GETA
-  eval_func: identification
   sampler:
     batch_size: 2
     sample_type: all_ordered
