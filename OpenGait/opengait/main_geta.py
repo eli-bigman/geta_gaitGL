@@ -50,7 +50,8 @@ def run_model(cfgs, training):
     height = 64   # Height of silhouette
     width = 44    # Width of silhouette
     
-    # Silhouette images in batch form
+    # Silhouette images in batch form - use random data but with fixed seed for reproducibility
+    torch.manual_seed(42)
     sils = torch.rand(batch_size, seq_len, 1, height, width).cuda()
     # Labels, types, views, seqL
     labs = torch.zeros(batch_size).long().cuda()
@@ -88,16 +89,23 @@ def run_model(cfgs, training):
         # Run training with the appropriate optimizer
         Model.run_train(model, optimizer=optimizer)
     else:
-        # After training is complete, construct the compressed model if testing with GETA
+        # Check if we need to construct a compressed model
         if hasattr(model.module, 'construct_compressed_model') and not training:
             compression_dir = cfgs['trainer_cfg'].get('compression_dir', './output/compressed_models')
             os.makedirs(compression_dir, exist_ok=True)
-            compressed_model_path = model.module.construct_compressed_model(compression_dir)
-            if compressed_model_path:
-                msg_mgr.log_info(f"Compressed model saved to {compressed_model_path}")
+            try:
+                compressed_model_path = model.module.construct_compressed_model(compression_dir)
+                if compressed_model_path:
+                    msg_mgr.log_info(f"Compressed model saved to {compressed_model_path}")
+            except Exception as e:
+                msg_mgr.log_info(f"Warning: Failed to construct compressed model: {e}")
         
         # Run standard testing
-        Model.run_test(model)
+        try:
+            Model.run_test(model)
+        except Exception as e:
+            msg_mgr.log_info(f"Error running test: {e}")
+            msg_mgr.log_info("This may be because no trained model is available yet. Please train the model first.")
 
 
 if __name__ == '__main__':

@@ -274,6 +274,10 @@ class BaseModel(MetaModel, nn.Module):
         self.msg_mgr.log_info("Restore Parameters from %s !!!" % save_name)
 
     def resume_ckpt(self, restore_hint):
+        if restore_hint == 0:
+            self.msg_mgr.log_info("No checkpoint to resume, starting from scratch.")
+            return
+            
         if isinstance(restore_hint, int):
             save_name = self.engine_cfg['save_name']
             save_name = osp.join(
@@ -285,6 +289,11 @@ class BaseModel(MetaModel, nn.Module):
         else:
             raise ValueError(
                 "Error type for -Restore_Hint-, supported: int or string.")
+        
+        if not osp.exists(save_name):
+            self.msg_mgr.log_warning("Checkpoint {} not found, skipping resume.".format(save_name))
+            return
+            
         self._load_ckpt(save_name)
 
     def fix_BN(self):

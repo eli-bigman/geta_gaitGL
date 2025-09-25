@@ -166,8 +166,21 @@ class GaitGLGeta(BaseModel):
 
     def init_geta(self, dummy_input, optimizer_cfg):
         """Initialize GETA optimization for the model"""
+        # Save current training state
+        training_state = self.training
+        
+        # Temporarily set model to eval mode for tracing
+        self.eval()
+        
         # Initialize OTO instance for GaitGL model
-        self.oto = OTO(model=self, dummy_input=dummy_input)
+        try:
+            self.oto = OTO(model=self, dummy_input=dummy_input)
+        finally:
+            # Restore original training state
+            if training_state:
+                self.train()
+            else:
+                self.eval()
         
         # Create GETA optimizer based on configuration
         self.geta_optimizer = self.oto.geta(
@@ -186,8 +199,21 @@ class GaitGLGeta(BaseModel):
 
     def init_hesso(self, dummy_input, optimizer_cfg):
         """Initialize HESSO optimization for the model"""
+        # Save current training state
+        training_state = self.training
+        
+        # Temporarily set model to eval mode for tracing
+        self.eval()
+        
         # Initialize OTO instance for GaitGL model
-        self.oto = OTO(model=self, dummy_input=dummy_input)
+        try:
+            self.oto = OTO(model=self, dummy_input=dummy_input)
+        finally:
+            # Restore original training state
+            if training_state:
+                self.train()
+            else:
+                self.eval()
         
         # Create HESSO optimizer based on configuration
         self.hesso_optimizer = self.oto.hesso(
@@ -212,9 +238,12 @@ class GaitGLGeta(BaseModel):
     def forward(self, inputs):
         ipts, labs, _, _, seqL = inputs
         seqL = None if not self.training else seqL
-        if not self.training and len(labs) != 1:
+        
+        # Only check batch size in real inference, not during tracing
+        if not self.training and not torch._C._get_tracing_state() and labs.shape[0] != 1:
             raise ValueError(
-                'The input size of each GPU must be 1 in testing mode, but got {}!'.format(len(labs)))
+                'The input size of each GPU must be 1 in testing mode, but got {}!'.format(labs.shape[0]))
+                
         sils = ipts[0].unsqueeze(1)
         del ipts
         n, _, s, h, w = sils.size()
