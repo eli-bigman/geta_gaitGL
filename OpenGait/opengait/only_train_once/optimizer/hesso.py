@@ -59,13 +59,19 @@ class HESSO(BaseHybridSparseOptimizer):
 
 
     def identify_redundant_groups(self):
-        global_scores = torch.cat(self.global_scores, dim=0)
-        curr_active_num_redundant_groups = self.active_num_redundant_groups[self.curr_pruning_period]
-        curr_K = len(self.pruned_group_idxes) + curr_active_num_redundant_groups
-        _, top_indices = torch.topk(-global_scores, curr_K)
-        top_indices = top_indices.cpu().numpy()
-        top_indices = np.setdiff1d(top_indices, self.pruned_group_idxes)[:curr_active_num_redundant_groups].tolist()
-        self.pruned_group_idxes.extend(top_indices)
+        # Check if self.global_scores is empty and handle the edge case
+        if not hasattr(self, 'global_scores') or not self.global_scores:
+            self.logger.warning("Warning: No prunable groups found (global_scores is empty). Skipping pruning for this step.")
+            top_indices = []  # Empty list as there are no groups to prune
+        else:
+            # Original logic for non-empty global_scores
+            global_scores = torch.cat(self.global_scores, dim=0)
+            curr_active_num_redundant_groups = self.active_num_redundant_groups[self.curr_pruning_period]
+            curr_K = len(self.pruned_group_idxes) + curr_active_num_redundant_groups
+            _, top_indices = torch.topk(-global_scores, curr_K)
+            top_indices = top_indices.cpu().numpy()
+            top_indices = np.setdiff1d(top_indices, self.pruned_group_idxes)[:curr_active_num_redundant_groups].tolist()
+            self.pruned_group_idxes.extend(top_indices)
 
         for group in self.param_groups:
             if group['is_prunable'] and not group['is_auxiliary']:
@@ -137,9 +143,21 @@ class HESSO(BaseHybridSparseOptimizer):
         if self.num_steps >= self.start_pruning_step and self.curr_pruning_period < self.pruning_periods:
             if (self.num_steps - self.start_pruning_step - 1) % self.pruning_period_duration == 0:
                 self.commit_redundant_idxes()
-                self.compute_importance_scores()
-                self.identify_redundant_groups()
-                self.curr_pruning_period += 1
+                
+                # Safely compute importance scores and proceed with pruning
+                try:
+                    self.compute_importance_scores()
+                    # Only proceed with identify_redundant_groups if we have scores to work with
+                    if hasattr(self, 'global_scores') and len(self.global_scores) > 0:
+                        self.identify_redundant_groups()
+                        self.curr_pruning_period += 1
+                    else:
+                        print(f"Warning: Skipping pruning at step {self.num_steps} as no importance scores were computed")
+                        self.curr_pruning_period += 1
+                except Exception as e:
+                    print(f"Error during pruning at step {self.num_steps}: {e}")
+                    # Continue training without pruning in case of error
+                    self.curr_pruning_period += 1
 
         # Second pass to update variables
         t = (self.num_steps - self.start_pruning_step) % self.pruning_period_duration

@@ -42,8 +42,8 @@ geta_optimizer_cfg:
   lr_quant: 1.0e-3  # Learning rate for quantization parameters
   first_momentum: 0.9
   weight_decay: 5.0e-4
-  target_group_sparsity: 0.5  # Higher sparsity leads to more compression but potentially lower accuracy
-  start_pruning_step: 10000  # When to start pruning
+  target_group_sparsity: 0.3  # Reduced from 0.5 to 0.3 for more stable training
+  start_pruning_step: 15000  # Delayed from 10000 to give model more time to train before pruning
   pruning_steps: 20000  # How many steps to reach target sparsity
   pruning_periods: 10  # Number of periods for incremental pruning
 
