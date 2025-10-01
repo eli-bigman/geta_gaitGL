@@ -73,7 +73,7 @@ def main():
     
     # Add missing transform key to avoid KeyError
     if 'trainer_cfg' in cfgs and 'transform' not in cfgs['trainer_cfg']:
-        cfgs['trainer_cfg']['transform'] = {}
+        cfgs['trainer_cfg']['transform'] = {'type': 'NoTransform'}
     
     print(f"Creating {model_cfg['model']} instance")
     model = Model(cfgs, training=False)
