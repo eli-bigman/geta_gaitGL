@@ -35,8 +35,10 @@ except ValueError:
             rank=0
         )
     except Exception as e:
-        print(f"Warning: Could not initialize distributed environment: {e}")
-        print("Setting up dummy distributed environment...")
+        # Get msg_mgr early - this is fine even before full initialization
+        msg_mgr = get_msg_mgr()
+        msg_mgr.log_warning(f"Warning: Could not initialize distributed environment: {e}")
+        msg_mgr.log_info("Setting up dummy distributed environment...")
         # Monkey patch distributed functions to avoid errors
         original_get_rank = torch.distributed.get_rank
         torch.distributed.get_rank = lambda: 0
@@ -46,6 +48,7 @@ except ValueError:
 # Now import from the correct paths
 from opengait.only_train_once import OTO
 from opengait.modeling import models
+from opengait.utils import get_msg_mgr
 
 def main():
     parser = argparse.ArgumentParser(description='Extract compressed model from checkpoint')
@@ -55,7 +58,14 @@ def main():
                         help='Path to the config file')
     parser.add_argument('--output_dir', default='./compressed_models', type=str,
                         help='Directory to save the compressed model')
+    parser.add_argument('--log_to_file', action='store_true',
+                        help='Log to file, default path is the output directory')
     args = parser.parse_args()
+    
+    # Initialize message manager
+    msg_mgr = get_msg_mgr()
+    output_path = os.path.dirname(args.output_dir)
+    msg_mgr.init_logger(output_path, args.log_to_file)
 
     # Load config
     with open(args.config, 'r') as stream:
@@ -147,11 +157,12 @@ def main():
         # For the compression to be effective, manually set target sparsity
         target_group_sparsity = optimizer_cfg.get('target_group_sparsity', 0.5)
         if hasattr(model.oto, '_graph'):
-            print(f"Setting target sparsity to {target_group_sparsity}")
-            model.oto._graph.random_set_zero_groups(target_group_sparsity=target_group_sparsity)
+            msg_mgr = get_msg_mgr()
+        msg_mgr.log_info(f"Setting target sparsity to {target_group_sparsity}")
+        model.oto._graph.random_set_zero_groups(target_group_sparsity=target_group_sparsity)
             
         # Apply compression through training iterations
-        print("Applying compression through training iterations...")
+        msg_mgr.log_info("Applying compression through training iterations...")
         
         # Create dummy criterion for training
         criterion = torch.nn.CrossEntropyLoss()
@@ -165,7 +176,7 @@ def main():
         
         # Simulate a number of training iterations (at least pruning_steps + some extra)
         num_iterations = max(pruning_steps + 200, 1500)
-        print(f"Running {num_iterations} training iterations to apply compression...")
+        msg_mgr.log_info(f"Running {num_iterations} training iterations to apply compression...")
         
         # Track sparsity and metrics
         for i in range(num_iterations):
@@ -192,24 +203,24 @@ def main():
                 # Get metrics from optimizer
                 metrics = model.geta_optimizer.compute_metrics()
                 current_sparsity = metrics.group_sparsity
-                print(f"Iteration {i}/{num_iterations}, "
+                msg_mgr.log_info(f"Iteration {i}/{num_iterations}, "
                      f"Loss: {loss.item():.4f}, "
                      f"Group Sparsity: {current_sparsity:.4f}, "
                      f"Important Groups: {metrics.num_important_groups}, "
                      f"Redundant Groups: {metrics.num_redundant_groups}")
         
-        print("Training iterations complete")
+        msg_mgr.log_info("Training iterations complete")
         
         # Now construct compressed model
         model.eval()  # Set to evaluation mode
         if hasattr(model, 'construct_compressed_model'):
-            print("Using model's construct_compressed_model method")
+            msg_mgr.log_info("Using model's construct_compressed_model method")
             compressed_model_path = model.construct_compressed_model(out_dir=args.output_dir)
         else:
             # Alternative approach if method doesn't exist
-            print("Using OTO's construct_subnet method directly")
+            msg_mgr.log_info("Using OTO's construct_subnet method directly")
             out_name = f"{model_cfg['model']}_compressed"
-            print(f"Saving compressed model as {out_name}")
+            msg_mgr.log_info(f"Saving compressed model as {out_name}")
             model.oto.construct_subnet(
                 out_dir=args.output_dir,
                 compressed_model_dir=args.output_dir,
@@ -217,14 +228,14 @@ def main():
             )
             compressed_model_path = model.oto.compressed_model_path
     except Exception as e:
-        print(f"Error initializing OTO or constructing compressed model: {e}")
-        print("Traceback:")
+        msg_mgr.log_warning(f"Error initializing OTO or constructing compressed model: {e}")
+        msg_mgr.log_warning("Traceback:")
         import traceback
-        traceback.print_exc()
+        msg_mgr.log_warning(traceback.format_exc())
         compressed_model_path = None
     
     if compressed_model_path:
-        print(f"Compressed model saved to: {compressed_model_path}")
+        msg_mgr.log_info(f"Compressed model saved to: {compressed_model_path}")
         
         try:
             # For PyTorch 2.6+ with stricter loading security
