@@ -11,6 +11,38 @@ opengait_dir = os.path.join(current_dir, 'opengait')
 sys.path.append(current_dir)
 sys.path.append(opengait_dir)
 
+# Initialize distributed environment to prevent errors
+if torch.cuda.is_available():
+    torch.cuda.set_device(0)
+    
+# Initialize distributed process group if not already initialized
+# This fixes "Default process group has not been initialized" error
+try:
+    if not torch.distributed.is_initialized():
+        torch.distributed.init_process_group(
+            backend='nccl' if torch.cuda.is_available() else 'gloo',
+            init_method='env://',
+            world_size=1,
+            rank=0
+        )
+except ValueError:
+    # If environment variables are not set, use file-based initialization
+    try:
+        torch.distributed.init_process_group(
+            backend='nccl' if torch.cuda.is_available() else 'gloo',
+            init_method='file:///tmp/pytorch_distributed_init',
+            world_size=1,
+            rank=0
+        )
+    except Exception as e:
+        print(f"Warning: Could not initialize distributed environment: {e}")
+        print("Setting up dummy distributed environment...")
+        # Monkey patch distributed functions to avoid errors
+        original_get_rank = torch.distributed.get_rank
+        torch.distributed.get_rank = lambda: 0
+        original_get_world_size = torch.distributed.get_world_size
+        torch.distributed.get_world_size = lambda: 1
+
 # Now import from the correct paths
 from opengait.only_train_once import OTO
 from opengait.modeling import models
