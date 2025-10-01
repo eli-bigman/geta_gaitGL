@@ -153,25 +153,54 @@ def main():
         print(f"Compressed model saved to: {compressed_model_path}")
         
         try:
-            # Load the compressed model to analyze
-            compressed_model = torch.load(compressed_model_path)
+            # For PyTorch 2.6+ with stricter loading security
+            print("Loading compressed model for analysis...")
+            model_loaded = False
             
-            # Count parameters
-            original_params = sum(p.numel() for p in model.parameters())
-            compressed_params = sum(p.numel() for p in compressed_model.parameters())
+            try:
+                # Try with weights_only=False to allow custom classes
+                compressed_model = torch.load(compressed_model_path, weights_only=False)
+                print("Successfully loaded model with weights_only=False")
+                model_loaded = True
+            except Exception as e:
+                print(f"Failed with weights_only=False: {e}")
+                try:
+                    # Try with pickle_module=None for older PyTorch versions
+                    compressed_model = torch.load(compressed_model_path, pickle_module=None)
+                    print("Successfully loaded model with pickle_module=None")
+                    model_loaded = True
+                except Exception as e:
+                    print(f"Failed with pickle_module=None: {e}")
+                    try:
+                        # Final attempt with map_location
+                        compressed_model = torch.load(
+                            compressed_model_path, 
+                            map_location=torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
+                            weights_only=False
+                        )
+                        model_loaded = True
+                    except Exception as e:
+                        print(f"All model loading attempts failed: {e}")
+                        print("Continuing with file size analysis only")
             
-            print(f"\nOriginal model parameters: {original_params:,}")
-            print(f"Compressed model parameters: {compressed_params:,}")
-            print(f"Compression ratio: {compressed_params/original_params:.4f}")
-            print(f"Parameter reduction: {(1-compressed_params/original_params)*100:.2f}%")
-            
-            # Compare file sizes
+            # Compare file sizes - this can be done even if model loading failed
             original_size_mb = os.path.getsize(args.checkpoint) / (1024*1024)
             compressed_size_mb = os.path.getsize(compressed_model_path) / (1024*1024)
             
             print(f"\nOriginal model file size: {original_size_mb:.2f} MB")
             print(f"Compressed model file size: {compressed_size_mb:.2f} MB")
             print(f"File size reduction: {(1-compressed_size_mb/original_size_mb)*100:.2f}%")
+            
+            # Only analyze parameters if model was successfully loaded
+            if model_loaded:
+                # Count parameters
+                original_params = sum(p.numel() for p in model.parameters())
+                compressed_params = sum(p.numel() for p in compressed_model.parameters())
+                
+                print(f"\nOriginal model parameters: {original_params:,}")
+                print(f"Compressed model parameters: {compressed_params:,}")
+                print(f"Compression ratio: {compressed_params/original_params:.4f}")
+                print(f"Parameter reduction: {(1-compressed_params/original_params)*100:.2f}%")
         except Exception as e:
             print(f"Error analyzing compressed model: {e}")
     else:
