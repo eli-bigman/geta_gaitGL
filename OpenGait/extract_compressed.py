@@ -6,65 +6,7 @@ import yaml
 import sys
 
 # Add necessary paths
-current_dir         # Initialize OTO
-    print("Initializing OTO and constructing compressed model")
-    compressed_model_path = None
-    try:
-        if not hasattr(model, 'oto') or model.oto is None:
-            # Check if GETA optimizer config exists
-            optimizer_cfg = cfgs.get('geta_optimizer_cfg', {})
-            if not optimizer_cfg:
-                print("No GETA optimizer configuration found, using default settings")
-                optimizer_cfg = {
-                    'variant': 'adam',
-                    'lr': 1.0e-4,
-                    'lr_quant': 1.0e-3,
-                    'first_momentum': 0.9,
-                    'weight_decay': 5.0e-4,
-                    'target_group_sparsity': 0.5,
-                    'start_pruning_step': 10000,
-                    'pruning_steps': 20000,
-                    'pruning_periods': 10
-                }
-            
-            print("Initializing GETA with optimizer config:")
-            for k, v in optimizer_cfg.items():
-                print(f"  {k}: {v}")
-                
-            # Use the model's built-in init_geta method instead of creating OTO directly
-            if hasattr(model, 'init_geta'):
-                print("Calling model.init_geta")
-                model.init_geta(dummy_input, optimizer_cfg)
-            else:
-                print("Model doesn't have init_geta method, creating OTO directly")
-                model.oto = OTO(model=model, dummy_input=dummy_input)
-                # Initialize compression steps
-                model.oto.partition_pzigs()
-                model.oto.set_trainable()
-        
-        # For the compression to be effective, we need to set zero groups based on target sparsity
-        if hasattr(model.oto, '_graph'):
-            print("Setting up model sparsity...")
-            # Target sparsity from config
-            optimizer_cfg = cfgs.get('geta_optimizer_cfg', {})
-            target_group_sparsity = optimizer_cfg.get('target_group_sparsity', 0.5)
-            model.oto._graph.random_set_zero_groups(target_group_sparsity=target_group_sparsity)
-            print(f"Applied target group sparsity of {target_group_sparsity}")
-            
-        # Construct compressed model
-        model.eval()  # Set to evaluation mode
-        if hasattr(model, 'construct_compressed_model'):
-            print("Using model's construct_compressed_model method")
-            compressed_model_path = model.construct_compressed_model(out_dir=args.output_dir)
-        else:
-            # Alternative approach if method doesn't exist
-            print("Model doesn't have construct_compressed_model method, using OTO directly")
-            # Use construct_subnet to get the paths to the compressed model
-            model.oto.construct_subnet(
-                out_dir=args.output_dir,
-                compressed_model_dir=args.output_dir
-            )
-            compressed_model_path = model.oto.compressed_model_path.path.abspath(__file__))
+current_dir = os.path.dirname(os.path.abspath(__file__))
 opengait_dir = os.path.join(current_dir, 'opengait')
 sys.path.append(current_dir)
 sys.path.append(opengait_dir)
