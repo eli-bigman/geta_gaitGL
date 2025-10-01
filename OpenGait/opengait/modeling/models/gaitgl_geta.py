@@ -3,6 +3,7 @@
 This module is modified from the original GaitGL model to support GETA compression technique.
 """
 
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -174,7 +175,17 @@ class GaitGLGeta(BaseModel):
         
         # Initialize OTO instance for GaitGL model
         try:
-            self.oto = OTO(model=self, dummy_input=dummy_input)
+            # Only create new OTO instance if one doesn't exist
+            if not hasattr(self, 'oto') or self.oto is None:
+                self.oto = OTO(model=self, dummy_input=dummy_input)
+                
+            # Make sure we partition the graph for proper compression
+            if hasattr(self.oto, 'partition_pzigs'):
+                self.oto.partition_pzigs()
+                
+            # Make sure trainable parameters are set
+            if hasattr(self.oto, 'set_trainable'):
+                self.oto.set_trainable()
         finally:
             # Restore original training state
             if training_state:
@@ -194,6 +205,14 @@ class GaitGLGeta(BaseModel):
             pruning_steps=optimizer_cfg.get('pruning_steps', 20000),
             pruning_periods=optimizer_cfg.get('pruning_periods', 10),
         )
+        
+        # Verify that the optimizer is properly set up
+        if hasattr(self.geta_optimizer, 'compute_metrics'):
+            metrics = self.geta_optimizer.compute_metrics()
+            print(f"Initial group sparsity: {metrics.group_sparsity:.4f}")
+            print(f"Target group sparsity: {optimizer_cfg.get('target_group_sparsity', 0.5):.4f}")
+            print(f"Important groups: {metrics.num_important_groups}")
+            print(f"Redundant groups: {metrics.num_redundant_groups}")
         
         return self.geta_optimizer
 
@@ -231,8 +250,39 @@ class GaitGLGeta(BaseModel):
     def construct_compressed_model(self, out_dir='./output'):
         """Construct compressed model after training"""
         if self.oto:
-            self.oto.construct_subnet(out_dir=out_dir)
-            return self.oto.compressed_model_path
+            # Ensure we're in eval mode for subnet construction
+            training_state = self.training
+            self.eval()
+            
+            try:
+                # Verify that compression has been applied
+                if hasattr(self.geta_optimizer, 'compute_metrics'):
+                    metrics = self.geta_optimizer.compute_metrics()
+                    print(f"Final group sparsity before construction: {metrics.group_sparsity:.4f}")
+                    print(f"Important groups: {metrics.num_important_groups}")
+                    print(f"Redundant groups: {metrics.num_redundant_groups}")
+                    
+                    if metrics.group_sparsity < 0.01:
+                        print("WARNING: Group sparsity is too low. GETA compression may not have been properly applied.")
+                        print("Did you run training iterations to apply sparsity?")
+                
+                # Construct the compressed subnet
+                self.oto.construct_subnet(out_dir=out_dir)
+                
+                # Verify compression results
+                if hasattr(self.oto, 'compressed_model_path') and hasattr(self.oto, 'full_group_sparse_model_path'):
+                    original_size_mb = os.path.getsize(self.oto.full_group_sparse_model_path) / (1024*1024)
+                    compressed_size_mb = os.path.getsize(self.oto.compressed_model_path) / (1024*1024)
+                    
+                    print(f"Full model size: {original_size_mb:.2f} MB")
+                    print(f"Compressed model size: {compressed_size_mb:.2f} MB")
+                    print(f"Size reduction: {(1-compressed_size_mb/original_size_mb)*100:.2f}%")
+                    
+                return self.oto.compressed_model_path
+            finally:
+                # Restore original training state
+                if training_state:
+                    self.train()
         return None
 
     def forward(self, inputs):

@@ -150,7 +150,57 @@ def main():
             print(f"Setting target sparsity to {target_group_sparsity}")
             model.oto._graph.random_set_zero_groups(target_group_sparsity=target_group_sparsity)
             
-        # Construct compressed model
+        # Apply compression through training iterations
+        print("Applying compression through training iterations...")
+        
+        # Create dummy criterion for training
+        criterion = torch.nn.CrossEntropyLoss()
+        
+        # Set model to training mode
+        model.train()
+        
+        # Get optimizer configuration
+        target_group_sparsity = optimizer_cfg.get('target_group_sparsity', 0.5)
+        pruning_steps = optimizer_cfg.get('pruning_steps', 1000)
+        
+        # Simulate a number of training iterations (at least pruning_steps + some extra)
+        num_iterations = max(pruning_steps + 200, 1500)
+        print(f"Running {num_iterations} training iterations to apply compression...")
+        
+        # Track sparsity and metrics
+        for i in range(num_iterations):
+            # Forward pass with dummy input
+            outputs = model(dummy_input)
+            
+            # Extract logits (assuming model returns a dict with training_feat->softmax->logits)
+            logits = outputs['training_feat']['softmax']['logits']
+            
+            # Generate random target labels for the dummy loss
+            batch_size = dummy_input[0].size(0)
+            random_labels = torch.randint(0, model_cfg['class_num'], (batch_size,)).cuda()
+            
+            # Calculate loss
+            loss = criterion(logits, random_labels)
+            
+            # Backward and optimize
+            model.geta_optimizer.zero_grad()
+            loss.backward()
+            model.geta_optimizer.step()
+            
+            # Track metrics
+            if i % 100 == 0 or i == num_iterations - 1:
+                # Get metrics from optimizer
+                metrics = model.geta_optimizer.compute_metrics()
+                current_sparsity = metrics.group_sparsity
+                print(f"Iteration {i}/{num_iterations}, "
+                     f"Loss: {loss.item():.4f}, "
+                     f"Group Sparsity: {current_sparsity:.4f}, "
+                     f"Important Groups: {metrics.num_important_groups}, "
+                     f"Redundant Groups: {metrics.num_redundant_groups}")
+        
+        print("Training iterations complete")
+        
+        # Now construct compressed model
         model.eval()  # Set to evaluation mode
         if hasattr(model, 'construct_compressed_model'):
             print("Using model's construct_compressed_model method")
